@@ -1,7 +1,6 @@
 import sys
 import struct
-import random
-from collections import deque
+import random , math
 
 class Cache:
     def __init__(self, nsets, bsize, assoc, subst):
@@ -9,62 +8,60 @@ class Cache:
         self.bsize = bsize
         self.assoc = assoc
         self.subst = subst.upper()
-        self.cache = [[] for _ in range(nsets)]  # Each set contains a list of (tag, valid, age/timestamp) tuples
+        self.cache = [[] for _ in range(nsets)]  # Cada conjunto contém uma lista de tuplas (tag, válido, idade/timestamp)
         self.total_accesses = 0
         self.hits = 0
         self.misses = 0
         self.compulsory_misses = 0
         self.capacity_misses = 0
         self.conflict_misses = 0
-        self.seen_tags = set()  # To track unique tags for compulsory misses
+        self.seen_tags = set()  # Para rastrear misses compulsórios para evitar duplicação
         self.address_bits = 32
         self.calculate_address_fields()
 
     def calculate_address_fields(self):
-        """Calculate the number of bits for offset, index, and tag."""
-        self.offset_bits = self.log2(self.bsize)
-        self.index_bits = self.log2(self.nsets)
+        # Calcula o número de bits para deslocamento, índice e tag
+        self.offset_bits = int(math.log2(self.bsize))
+        self.index_bits = int(math.log2(self.nsets))
         self.tag_bits = self.address_bits - self.offset_bits - self.index_bits
 
-    def log2(self, x):
-        """Calculate the base-2 logarithm of x."""
-        return (x - 1).bit_length()
-
+    # Extrai tag e index do endereço de 32 bits
     def get_address_components(self, address):
-        """Extract tag and index from the 32-bit address."""
-        offset_mask = (1 << self.offset_bits) - 1
+
+        #Deslocamento de bit
+        #offset_mask = (1 << self.offset_bits) - 1
         index_mask = (1 << self.index_bits) - 1
         index = (address >> self.offset_bits) & index_mask
         tag = address >> (self.offset_bits + self.index_bits)
         return tag, index
 
+    #Simula um acesso de cache pro endereço fornecido
     def access_cache(self, address):
-        """Simulate a cache access for the given address."""
         self.total_accesses += 1
         tag, index = self.get_address_components(address)
         set_content = self.cache[index]
 
-        # Check for hit
+        # HIT
         for entry in set_content:
-            if entry[0] == tag and entry[1]:  # Valid entry with matching tag
+            if entry[0] == tag and entry[1]:  # Entrada válida com tag correspondente
                 self.hits += 1
-                if self.subst == 'L':  # Update LRU timestamp
+                if self.subst == 'L':  #Traduz Atualiza o timestamp para LRU
                     entry[2] = self.total_accesses
-                elif self.subst == 'F':  # Move to end for FIFO
+                elif self.subst == 'F':  # Move para o final se for FIFO
                     set_content.remove(entry)
                     set_content.append(entry)
                 return
 
-        # Miss handling
+        # MISS
         self.misses += 1
         is_compulsory = (tag, index) not in self.seen_tags
         self.seen_tags.add((tag, index))
 
-        # Check if set is full
+        # Checa se o conjunto está cheio
         set_full = len(set_content) >= self.assoc
         cache_full = sum(len(s) for s in self.cache) >= self.nsets * self.assoc
 
-        # Classify miss
+        # Classifica o miss
         if is_compulsory:
             self.compulsory_misses += 1
         elif set_full and cache_full:
@@ -72,22 +69,21 @@ class Cache:
         elif set_full:
             self.conflict_misses += 1
         else:
-            self.compulsory_misses += 1  # Treat as compulsory if not full
+            self.compulsory_misses += 1  # Trata como compulsório se não estiver cheio
 
-        # Add new entry
-        new_entry = [tag, True, self.total_accesses]  # [tag, valid, timestamp/age]
+        new_entry = [tag, True, self.total_accesses]  # [tag, valid, timestamp/idade]
         if not set_full:
             set_content.append(new_entry)
         else:
-            # Replace an entry based on substitution policy
+            # Substitui uma entrada na política de substituição
             if self.subst == 'R':
                 idx = random.randint(0, self.assoc - 1)
                 set_content[idx] = new_entry
             elif self.subst == 'F':
-                set_content.pop(0)  # Remove oldest
+                set_content.pop(0)  # Remove o mais antigo
                 set_content.append(new_entry)
             elif self.subst == 'L':
-                # Find least recently used (smallest timestamp)
+                # Encontra o menos usado recentemente (Menor timestamp)
                 lru_idx = 0
                 min_time = set_content[0][2]
                 for i, entry in enumerate(set_content[1:], 1):
@@ -97,7 +93,7 @@ class Cache:
                 set_content[lru_idx] = new_entry
 
     def print_stats(self, flag_out):
-        """Print statistics based on the output flag."""
+        #Exibe as taxas de hits, misses e tipos de misses baseado na flag de saída
         hit_rate = self.hits / self.total_accesses if self.total_accesses > 0 else 0
         miss_rate = self.misses / self.total_accesses if self.total_accesses > 0 else 0
         compulsory_rate = self.compulsory_misses / self.misses if self.misses > 0 else 0
@@ -131,7 +127,7 @@ def main():
         print("Erro: Parâmetros numéricos inválidos.")
         sys.exit(1)
 
-    # Validate parameters
+    # Validação dos parâmetros
     if nsets <= 0 or bsize <= 0 or assoc <= 0:
         print("Erro: nsets, bsize e assoc devem ser maiores que zero.")
         sys.exit(1)
@@ -142,14 +138,12 @@ def main():
         print("Erro: flag_saida deve ser 0 ou 1.")
         sys.exit(1)
 
-    # Initialize cache
     cache = Cache(nsets, bsize, assoc, subst)
 
-    # Read input file
     try:
         with open(input_file, 'rb') as f:
             while True:
-                # Read 4 bytes (32-bit address) in big-endian
+                #Le 4 bytes (endereço de 32 bits) em big-endian o que é big-endian   
                 data = f.read(4)
                 if not data:
                     break
@@ -162,7 +156,6 @@ def main():
         print(f"Erro ao ler o arquivo: {e}")
         sys.exit(1)
 
-    # Print results
     cache.print_stats(flag_out)
 
 if __name__ == '__main__':
